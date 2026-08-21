@@ -692,7 +692,7 @@ const applyDesktopUiPreferences = (settings: DesktopSettings) => {
     nextFollowUpBehavior = normalizeFollowUpBehavior(undefined, settings.queueModeEnabled);
   }
   if (nextFollowUpBehavior && nextFollowUpBehavior !== queueStore.followUpBehavior) {
-    queueStore.setFollowUpBehavior(nextFollowUpBehavior);
+    void queueStore.setFollowUpBehavior(nextFollowUpBehavior);
   }
 
   if (typeof settings.showDeletionDialog === 'boolean' && settings.showDeletionDialog !== store.showDeletionDialog) {
