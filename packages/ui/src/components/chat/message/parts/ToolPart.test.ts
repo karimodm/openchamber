@@ -5,6 +5,7 @@ import { readTaskTagSessionIdFromOutput } from './taskSessionIdParser';
 import { parseDiffToUnified, tryParseJsonOutput } from '../toolRenderers';
 import { getStreamingThrottleText } from '../../hooks/useStreamingTextThrottle';
 import { getToolDescriptionFallback } from './toolRenderUtils';
+import { getToolJsonViewMode, parseToolJsonViewMode, setToolJsonViewMode } from './toolJsonViewPreference';
 
 describe('getToolOutput', () => {
     test('prefers state.output for completed tools', () => {
@@ -171,6 +172,18 @@ describe('OpenChamber tool output', () => {
             data: { projects: [] },
         };
         expect(tryParseJsonOutput(JSON.stringify(result))).toEqual({ data: result, isJson: true });
+    });
+});
+
+describe('tool JSON view preference', () => {
+    test('persists the selected mode for future command outputs', () => {
+        setToolJsonViewMode('raw');
+        expect(getToolJsonViewMode()).toBe('raw');
+    });
+
+    test('uses summary when no valid preference exists', () => {
+        expect(parseToolJsonViewMode(null)).toBe('summary');
+        expect(parseToolJsonViewMode('unknown')).toBe('summary');
     });
 });
 
