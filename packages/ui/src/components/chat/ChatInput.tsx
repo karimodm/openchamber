@@ -1194,7 +1194,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             beforeSend?: () => void | Promise<void>;
             onSendFailure?: (ambiguous: boolean) => void;
         } | undefined;
-        if (isBtwActive && btwSessionId && btwDirectory) {
+        if (!queuedOnly && isBtwActive && btwSessionId && btwDirectory) {
             sendMessageOptions = {
                 sessionId: btwSessionId,
                 directory: btwDirectory,
@@ -1290,7 +1290,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             composerAttachments: attachedFiles,
             inlineComments: drafts,
             syntheticTexts: [
-                ...buildBtwSyntheticTexts({ isBtwActive, isPromotedBtwSession }),
+                ...buildBtwSyntheticTexts({ isBtwActive: isBtwActive && !queuedOnly, isPromotedBtwSession }),
                 ...(syntheticParts?.map((part) => part.text) ?? []),
             ],
             linkedIssue: linkedIssue
@@ -1416,6 +1416,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     toast.error(t('chat.btw.toast.createFailed'));
                     return;
                 }
+                if (!(await markQueuedSending())) return;
                 try {
                     // A new btw replaces this session's current one: destroy
                     // the previous fork first so forks never accumulate.
@@ -1431,9 +1432,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         agent: agentNameToSend,
                         variant: variantToSend,
                     });
+                    await removeSentQueuedMessages();
                     scrollToBottom?.();
                 } catch (error) {
                     toast.error(getSubmitErrorMessage(error, t('chat.btw.toast.createFailed')));
+                } finally {
+                    await clearQueuedSending();
                 }
                 return;
             }
@@ -1485,7 +1489,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         const currentSessionDirectory = capturedTarget?.directory ?? currentDirectory;
         // btw mode: the fork already carries the question plus full history,
         // so the response-style instruction never applies there.
-        const shouldAddResponseStyle = !isBtwActive && (newSessionDraftOpen || (currentSessionId ? !hasUserMessages(currentSessionId, currentSessionDirectory) : false));
+        const shouldAddResponseStyle = (!isBtwActive || queuedOnly) && (newSessionDraftOpen || (currentSessionId ? !hasUserMessages(currentSessionId, currentSessionDirectory) : false));
         if (shouldAddResponseStyle) {
             const responseStyleInstruction = await fetchResponseStyleInstruction().catch(() => null);
             if (responseStyleInstruction) {

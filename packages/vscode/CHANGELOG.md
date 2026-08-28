@@ -55,7 +55,6 @@
 - Providers: expanded support for custom providers.
 - Sessions created outside OpenChamber now appear in the sidebar and Recent list without a page refresh (thanks to @tomzx).
 - If OpenCode restarts while a response is still running, the chat now stops with an interrupted state and a notification to continue instead of hanging silently (thanks to @sum117).
-- Chat: queued messages accepted just before a reload no longer remain in the queue and send again after the webview returns (thanks to @karimodm).
 - Usage: Z.ai credit limits now appear alongside its other quota windows.
 - Chat: file paths in messages now open from the session's workspace, even if you last browsed files in another workspace (thanks to @tomzx).
 - Chat: app links such as `spotify://` now ask for confirmation before opening another app. You can trust an app link type on one device and manage trusted links in Settings.
