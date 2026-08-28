@@ -934,11 +934,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         const messageToQueue = inputSnapshot.message.replace(/^\n+|\n+$/g, '');
         const attachmentsToQueue = sanitizeAttachmentsForSend(attachedFiles);
 
-        const restoreDrafts = () => {
-            if (inlineDraftTarget && drafts.length > 0) {
-                useInlineCommentDraftStore.getState().restoreDrafts(inlineDraftTarget, drafts);
-            }
-        };
         let queued = false;
         try {
             queued = await addToQueue(messageQueueTarget, {
@@ -952,15 +947,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 } : undefined,
             });
         } catch (error) {
-            restoreDrafts();
             console.warn('[queue] failed to persist queued message:', error);
             toast.error(t('chat.chatInput.toast.messageSendFailed'));
             return;
         }
-        if (!queued) {
-            restoreDrafts();
-            return;
-        }
+        if (!queued) return;
 
         // Sending while the agent works must still take the reader to the
         // live edge — a queued message produces no user row yet, so the
@@ -980,7 +971,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         if (!isMobile) {
             composerRef.current?.focus();
         }
-    }, [getCurrentInputSnapshot, currentSessionId, messageQueueTarget, inlineDraftTarget, drafts, attachedFiles, sanitizeAttachmentsForSend, addToQueue, clearAttachedFiles, isMobile, currentProviderId, currentModelId, currentAgentName, currentVariant, scrollToLatest, t]);
+    }, [getCurrentInputSnapshot, currentSessionId, messageQueueTarget, attachedFiles, sanitizeAttachmentsForSend, addToQueue, clearAttachedFiles, isMobile, currentProviderId, currentModelId, currentAgentName, currentVariant, scrollToLatest, t]);
 
     const handleQueuedMessageEdit = React.useCallback((content: string) => {
         setMessage(content);
