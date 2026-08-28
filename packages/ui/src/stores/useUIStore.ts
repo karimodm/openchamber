@@ -818,6 +818,7 @@ interface UIStore {
   /** Width of the walkthrough table of contents, in pixels. */
   walkthroughTocWidth: number;
   gitChangesViewMode: 'flat' | 'tree';
+  toolJsonViewMode: 'summary' | 'formatted' | 'raw';
   linearIssueListStatus: LinearIssueListStatus;
   linearIssueListAssignee: LinearIssueListAssignee;
   linearIssueListTeamId: string;
@@ -1020,6 +1021,7 @@ interface UIStore {
   setDiffWrapLines: (wrap: boolean) => void;
   setWalkthroughTocWidth: (width: number) => void;
   setGitChangesViewMode: (mode: 'flat' | 'tree') => void;
+  setToolJsonViewMode: (mode: 'summary' | 'formatted' | 'raw') => void;
   setLinearIssueListStatus: (status: LinearIssueListStatus) => void;
   setLinearIssueListAssignee: (assignee: LinearIssueListAssignee) => void;
   setLinearIssueListTeamId: (teamId: string) => void;
@@ -1183,6 +1185,7 @@ export const useUIStore = create<UIStore>()(
         diffWrapLines: false,
         walkthroughTocWidth: 224,
         gitChangesViewMode: 'flat',
+        toolJsonViewMode: 'summary',
         linearIssueListStatus: 'all',
         linearIssueListAssignee: 'any',
         linearIssueListTeamId: LINEAR_ISSUE_LIST_ALL_TEAMS,
@@ -2104,6 +2107,10 @@ export const useUIStore = create<UIStore>()(
           set({ gitChangesViewMode: mode });
         },
 
+        setToolJsonViewMode: (mode) => {
+          set({ toolJsonViewMode: mode });
+        },
+
         setLinearIssueListStatus: (status) => {
           set({ linearIssueListStatus: sanitizeLinearIssueListStatus(status) });
         },
@@ -2133,7 +2140,6 @@ export const useUIStore = create<UIStore>()(
           const trimmed = identifier?.trim() ?? '';
           set({ linearIssueFocus: trimmed || null });
         },
-
         setInputBarOffset: (offset) => {
           set({ inputBarOffset: offset });
         },
@@ -2798,6 +2804,12 @@ export const useUIStore = create<UIStore>()(
           state.fileEditorKeymap = normalizeFileEditorKeymap(state.fileEditorKeymap);
           state.largeTextPasteBehavior = normalizeLargeTextPasteBehavior(state.largeTextPasteBehavior);
 
+          if (state.toolJsonViewMode !== 'summary'
+            && state.toolJsonViewMode !== 'formatted'
+            && state.toolJsonViewMode !== 'raw') {
+            state.toolJsonViewMode = 'summary';
+          }
+
           if (typeof state.autoSaveEnabled !== 'boolean') {
             state.autoSaveEnabled = true;
           }
@@ -2872,6 +2884,7 @@ export const useUIStore = create<UIStore>()(
           diffWrapLines: state.diffWrapLines,
           walkthroughTocWidth: state.walkthroughTocWidth,
           gitChangesViewMode: state.gitChangesViewMode,
+          toolJsonViewMode: state.toolJsonViewMode,
           linearIssueListStatus: state.linearIssueListStatus,
           linearIssueListAssignee: state.linearIssueListAssignee,
           linearIssueListTeamId: state.linearIssueListTeamId,
