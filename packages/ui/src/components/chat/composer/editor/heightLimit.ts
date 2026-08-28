@@ -15,15 +15,39 @@ export function getComposerHeightLimit(options: ComposerHeightLimitOptions): num
     let limit = maxLinesHeight;
     if (boundHeight !== undefined && surroundingHeight !== undefined) {
         const available = boundHeight - surroundingHeight - boundGapPx;
-        limit = Math.min(limit, Math.max(0, available));
+        if (available > 0) limit = Math.min(limit, available);
     }
     return limit;
 }
 
-export function getComposerHostHeightLimit(
-    scrollHeightLimit: number,
-    editorHeight: number,
-    renderedScrollHeight: number,
-): number {
-    return scrollHeightLimit + Math.max(0, editorHeight - renderedScrollHeight);
+export interface ComposerHostHeightLimitOptions {
+    maxLinesHeight: number;
+    editorHeight: number;
+    renderedScrollHeight: number;
+    boundHeight?: number;
+    branchHeight?: number;
+    hostHeight?: number;
+    boundGapPx?: number;
+}
+
+export function getComposerHostHeightLimit(options: ComposerHostHeightLimitOptions): number {
+    const {
+        maxLinesHeight,
+        editorHeight,
+        renderedScrollHeight,
+        boundHeight,
+        branchHeight,
+        hostHeight,
+        boundGapPx,
+    } = options;
+    const editorChrome = Math.max(0, editorHeight - renderedScrollHeight);
+    const surroundingHeight = branchHeight !== undefined && hostHeight !== undefined
+        ? Math.max(0, branchHeight - hostHeight)
+        : undefined;
+    return getComposerHeightLimit({
+        maxLinesHeight: maxLinesHeight + editorChrome,
+        boundHeight,
+        surroundingHeight,
+        boundGapPx,
+    });
 }

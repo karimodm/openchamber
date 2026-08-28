@@ -227,7 +227,7 @@ export const ComposerDictation: React.FC<ComposerDictationProps> = ({
     const transcriptContentRef = React.useRef<HTMLDivElement | null>(null);
     const [footerHeight, setFooterHeight] = React.useState<number | null>(null);
     const isActiveStatus = status !== 'idle';
-    const hasSalvageText = status === 'failed' && Boolean(partialTranscript);
+    const hasSalvageText = status === 'failed' && Boolean(partialTranscript.trim());
 
     // Grow the composer with failed-dictation salvage text, the way typing grows
     // the textarea. The overlay is absolutely positioned over the composer, so

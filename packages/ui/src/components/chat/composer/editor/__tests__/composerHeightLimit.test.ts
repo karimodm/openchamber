@@ -32,18 +32,40 @@ describe('getComposerHeightLimit', () => {
         expect(appliedHeight + surroundingHeight + boundGapPx).toBeLessThanOrEqual(boundHeight);
     });
 
-    test('[issue-2533] caps an already-expanded failed-dictation salvage floor', () => {
-        const salvageTextHeight = 1800;
-        const scrollHeightLimit = 15;
-        const editorHeight = 52;
-        const renderedScrollHeight = 15;
-        const limit = getComposerHostHeightLimit(
-            scrollHeightLimit,
-            editorHeight,
-            renderedScrollHeight,
-        );
+    test('[issue-2533] keeps failed-dictation salvage text bounded after a short viewport reflow', () => {
+        expect(getComposerHostHeightLimit({
+            maxLinesHeight: 360,
+            editorHeight: 52,
+            renderedScrollHeight: 15,
+            boundHeight: 361,
+            branchHeight: 357,
+            hostHeight: 52,
+            boundGapPx: 4,
+        })).toBe(52);
+    });
 
-        expect(Math.min(salvageTextHeight, limit)).toBe(52);
+    test('[issue-2533] does not feed the applied salvage height back into its limit', () => {
+        const dimensions = {
+            maxLinesHeight: 360,
+            editorHeight: 52,
+            renderedScrollHeight: 52,
+            boundHeight: 640,
+            boundGapPx: 4,
+        };
+
+        const initial = getComposerHostHeightLimit({
+            ...dimensions,
+            branchHeight: 316,
+            hostHeight: 52,
+        });
+        const afterGrowth = getComposerHostHeightLimit({
+            ...dimensions,
+            branchHeight: 624,
+            hostHeight: 360,
+        });
+
+        expect(initial).toBe(360);
+        expect(afterGrowth).toBe(initial);
     });
 
     test('uses the line cap when a tablet has more vertical room', () => {
@@ -55,13 +77,13 @@ describe('getComposerHeightLimit', () => {
         })).toBe(360);
     });
 
-    test('does not drop the screen cap when surrounding controls use all available room', () => {
+    test('keeps the line cap when no positive screen budget can be measured', () => {
         expect(getComposerHeightLimit({
             maxLinesHeight: 360,
             boundHeight: 320,
             surroundingHeight: 340,
             boundGapPx: 4,
-        })).toBe(0);
+        })).toBe(360);
     });
 
     test('falls back to the line cap when no screen bound is available', () => {
