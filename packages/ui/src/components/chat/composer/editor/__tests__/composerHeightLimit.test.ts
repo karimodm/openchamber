@@ -15,8 +15,8 @@ describe('getComposerHeightLimit', () => {
         expect(Math.min(contentHeight, limit)).toBe(contentHeight);
     });
 
-    test('[issue-2533] keeps a long dictation and its controls inside the mobile bound', () => {
-        const transcriptHeight = 1800;
+    test('[issue-2533] keeps long failed-dictation salvage text and its controls inside the mobile bound', () => {
+        const salvageTextHeight = 1800;
         const boundHeight = 640;
         const surroundingHeight = 316;
         const boundGapPx = 4;
@@ -26,22 +26,24 @@ describe('getComposerHeightLimit', () => {
             surroundingHeight,
             boundGapPx,
         });
-        const appliedHeight = Math.min(transcriptHeight, limit);
+        const appliedHeight = Math.min(salvageTextHeight, limit);
 
         expect(appliedHeight).toBe(320);
         expect(appliedHeight + surroundingHeight + boundGapPx).toBeLessThanOrEqual(boundHeight);
     });
 
-    test('[issue-2533] mirrors the editor limit after a short viewport reflow', () => {
+    test('[issue-2533] caps an already-expanded failed-dictation salvage floor', () => {
+        const salvageTextHeight = 1800;
         const scrollHeightLimit = 15;
         const editorHeight = 52;
         const renderedScrollHeight = 15;
-
-        expect(getComposerHostHeightLimit(
+        const limit = getComposerHostHeightLimit(
             scrollHeightLimit,
             editorHeight,
             renderedScrollHeight,
-        )).toBe(52);
+        );
+
+        expect(Math.min(salvageTextHeight, limit)).toBe(52);
     });
 
     test('uses the line cap when a tablet has more vertical room', () => {

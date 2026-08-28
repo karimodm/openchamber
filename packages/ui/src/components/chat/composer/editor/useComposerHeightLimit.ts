@@ -44,42 +44,51 @@ export function useComposerHeightLimit(options: UseComposerHeightLimitOptions): 
         }
 
         const applyLimit = () => {
-            const scrollHeightLimit = parseFloat(scroller.style.maxHeight || '');
-            if (Number.isFinite(scrollHeightLimit) && scrollHeightLimit >= 0) {
-                const next = getComposerHostHeightLimit(
-                    scrollHeightLimit,
-                    editor.offsetHeight,
-                    scroller.offsetHeight,
-                );
-                setHeightLimit((previous) => (previous === next ? previous : next));
-                return;
-            }
+            // React applies the raw salvage floor before this layout effect.
+            // Ignore it while measuring or the expanded editor feeds that raw
+            // height back into its own cap.
+            const appliedMinHeight = host.style.minHeight;
+            host.style.minHeight = '';
+            try {
+                const scrollHeightLimit = parseFloat(scroller.style.maxHeight || '');
+                if (Number.isFinite(scrollHeightLimit) && scrollHeightLimit >= 0) {
+                    const next = getComposerHostHeightLimit(
+                        scrollHeightLimit,
+                        editor.offsetHeight,
+                        scroller.offsetHeight,
+                    );
+                    setHeightLimit((previous) => (previous === next ? previous : next));
+                    return;
+                }
 
-            // The editor normally publishes its limit first. This fallback
-            // covers its initial mount before that passive effect has run.
-            const lineHeight = parseFloat(window.getComputedStyle(content).lineHeight || '');
-            if (!Number.isFinite(lineHeight) || lineHeight <= 0) return;
-            const next = getComposerHeightLimit({
-                maxLinesHeight: lineHeight * maxLines,
-                boundHeight: bound?.clientHeight,
-                surroundingHeight: bound && branch
-                    ? branch.offsetHeight - host.offsetHeight
-                    : undefined,
-                boundGapPx,
-            });
-            setHeightLimit((previous) => (previous === next ? previous : next));
+                // The editor normally publishes its limit first. This fallback
+                // covers its initial mount before that passive effect has run.
+                const lineHeight = parseFloat(window.getComputedStyle(content).lineHeight || '');
+                if (!Number.isFinite(lineHeight) || lineHeight <= 0) return;
+                const next = getComposerHeightLimit({
+                    maxLinesHeight: lineHeight * maxLines,
+                    boundHeight: bound?.clientHeight,
+                    surroundingHeight: bound && branch
+                        ? branch.offsetHeight - host.offsetHeight
+                        : undefined,
+                    boundGapPx,
+                });
+                setHeightLimit((previous) => (previous === next ? previous : next));
+            } finally {
+                host.style.minHeight = appliedMinHeight;
+            }
         };
 
         applyLimit();
-        if (typeof ResizeObserver === 'undefined') return;
-        const observer = new ResizeObserver(applyLimit);
+        if (!window.ResizeObserver) return;
+        const observer = new window.ResizeObserver(applyLimit);
         observer.observe(content);
         observer.observe(scroller);
         if (branch) observer.observe(branch);
         if (bound) observer.observe(bound);
-        const styleObserver = typeof MutationObserver === 'undefined'
-            ? null
-            : new MutationObserver(applyLimit);
+        const styleObserver = window.MutationObserver
+            ? new window.MutationObserver(applyLimit)
+            : null;
         styleObserver?.observe(scroller, { attributes: true, attributeFilter: ['style'] });
         return () => {
             observer.disconnect();
