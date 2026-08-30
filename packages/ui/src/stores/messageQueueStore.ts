@@ -49,6 +49,7 @@ export interface QueuedMessage {
     /** Durable identity for a send whose outcome may survive this page. */
     sendAttempt?: {
         messageID: string;
+        dispatched: boolean;
     };
     /** Send config captured at queue time — used as-is when auto-sending */
     sendConfig?: {
@@ -57,6 +58,10 @@ export interface QueuedMessage {
         agent?: string;
         variant?: string;
     };
+    additionalParts?: Array<{
+        text: string;
+        synthetic?: boolean;
+    }>;
 }
 
 export type MessageQueueTarget = {
@@ -68,10 +73,11 @@ export type MessageQueueTarget = {
 const MAX_QUEUE_TARGETS = 50;
 const MAX_MESSAGES_PER_QUEUE = 20;
 const DELETED_TARGET_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-const MESSAGE_QUEUE_STORE_VERSION = 5;
+const MESSAGE_QUEUE_STORE_VERSION = 6;
 export const MESSAGE_QUEUE_STORAGE_KEY = 'message-queue-store';
 const persistedSendAttemptSchema = z.object({
     messageID: z.string().trim().min(1),
+    dispatched: z.boolean(),
 });
 const durableQueueEnvelopeSchema = z.object({
     state: z.object({
@@ -125,6 +131,14 @@ export const selectQueuedMessagesForSubmit = (
     return [head];
 };
 
+export const shouldQueueComposerSubmission = (
+    queue: QueuedMessage[],
+    hasComposerContent: boolean,
+    queuedOnly: boolean,
+    runsLocally: boolean,
+    queueRequested: boolean,
+): boolean => !queuedOnly && !runsLocally && hasComposerContent && (queueRequested || queue.length > 0);
+
 interface MessageQueueState {
     queuedMessages: Record<string, QueuedMessage[]>; // runtime + directory + session → queue
     quarantinedLegacyMessages: Record<string, QueuedMessage[]>;
@@ -156,6 +170,7 @@ interface MessageQueueActions {
     markSending: (target: MessageQueueTarget, messageId: string) => Promise<boolean>;
     clearSending: (target: MessageQueueTarget, messageId: string) => Promise<void>;
     recordSendAttempt: (target: MessageQueueTarget, messageId: string, sendMessageID: string) => Promise<boolean>;
+    markSendAttemptDispatched: (target: MessageQueueTarget, messageId: string, sendMessageID: string) => Promise<boolean>;
     clearSendAttempt: (target: MessageQueueTarget, messageId: string) => Promise<void>;
     getSendableQueue: (target: MessageQueueTarget) => QueuedMessage[];
     setFollowUpBehavior: (behavior: FollowUpBehavior) => Promise<void>;
@@ -174,12 +189,16 @@ type PersistedMessageQueueState = {
 
 const sanitizeSendAttempts = (
     queues: Record<string, QueuedMessage[]> | undefined,
+    legacyAttemptsWereDispatched: boolean,
 ): Record<string, QueuedMessage[]> => Object.fromEntries(
     Object.entries(queues ?? {}).map(([key, messages]) => [
         key,
         messages.map((message) => {
             if (message.sendAttempt === undefined) return message;
-            const parsed = persistedSendAttemptSchema.safeParse(message.sendAttempt);
+            const attempt = legacyAttemptsWereDispatched
+                ? { ...message.sendAttempt, dispatched: true }
+                : message.sendAttempt;
+            const parsed = persistedSendAttemptSchema.safeParse(attempt);
             if (parsed.success) return { ...message, sendAttempt: parsed.data };
             const { sendAttempt: _removed, ...queuedMessage } = message;
             void _removed;
@@ -223,15 +242,28 @@ const isSendAttemptDurable = (
     )) === true;
 };
 
+const isDispatchedSendAttemptDurable = (
+    target: MessageQueueTarget,
+    messageId: string,
+    sendMessageID: string,
+): boolean => {
+    if (!globalThis.window) return true;
+    return readDurableQueue(target)?.some((message) => (
+        message.id === messageId
+        && message.sendAttempt?.messageID === sendMessageID
+        && message.sendAttempt.dispatched
+    )) === true;
+};
+
 export const migrateMessageQueueState = (persistedState: unknown, version: number): Partial<MessageQueueStore> => {
     const state = (persistedState ?? {}) as PersistedMessageQueueState;
     const legacyQueues = version < 2 ? (state.queuedMessages ?? {}) : {};
     return {
-        queuedMessages: version < 2 ? {} : sanitizeSendAttempts(state.queuedMessages),
+        queuedMessages: version < 2 ? {} : sanitizeSendAttempts(state.queuedMessages, version < 6),
         quarantinedLegacyMessages: sanitizeSendAttempts({
             ...(state.quarantinedLegacyMessages ?? {}),
             ...legacyQueues,
-        }),
+        }, version < 6),
         deletedTargets: sanitizeDeletedTargets(state.deletedTargets),
         followUpBehavior: normalizeFollowUpBehavior(state.followUpBehavior, state.queueModeEnabled ?? null),
     };
@@ -256,6 +288,7 @@ export const useMessageQueueStore = create<MessageQueueStore>()(
                         attachments: message.attachments,
                         createdAt: Date.now(),
                         sendConfig: message.sendConfig,
+                        additionalParts: message.additionalParts,
                     };
 
                     return withMessageQueueStateLock(() => {
@@ -478,7 +511,7 @@ export const useMessageQueueStore = create<MessageQueueStore>()(
                             const nextQueue = currentQueue.slice();
                             nextQueue[messageIndex] = {
                                 ...nextQueue[messageIndex],
-                                sendAttempt: { messageID: sendMessageID },
+                                sendAttempt: { messageID: sendMessageID, dispatched: false },
                             };
                             return {
                                 queuedMessages: {
@@ -488,6 +521,35 @@ export const useMessageQueueStore = create<MessageQueueStore>()(
                             };
                         });
                         return recorded && isSendAttemptDurable(target, messageId, sendMessageID);
+                    });
+                },
+
+                markSendAttemptDispatched: async (target, messageId, sendMessageID) => {
+                    const key = getMessageQueueKey(target);
+                    return withMessageQueueStateLock(() => {
+                        let marked = false;
+                        set((state) => {
+                            if (state.deletedTargets[key] !== undefined) return state;
+                            const currentQueue = state.queuedMessages[key];
+                            if (!currentQueue) return state;
+                            const messageIndex = currentQueue.findIndex((message) => message.id === messageId);
+                            const attempt = currentQueue[messageIndex]?.sendAttempt;
+                            if (!attempt || attempt.messageID !== sendMessageID) return state;
+                            marked = true;
+                            if (attempt.dispatched) return state;
+                            const nextQueue = currentQueue.slice();
+                            nextQueue[messageIndex] = {
+                                ...nextQueue[messageIndex],
+                                sendAttempt: { ...attempt, dispatched: true },
+                            };
+                            return {
+                                queuedMessages: {
+                                    ...state.queuedMessages,
+                                    [key]: nextQueue,
+                                },
+                            };
+                        });
+                        return marked && isDispatchedSendAttemptDurable(target, messageId, sendMessageID);
                     });
                 },
 

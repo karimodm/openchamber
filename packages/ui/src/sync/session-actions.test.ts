@@ -24,6 +24,8 @@ const globalUpsertedSessions: unknown[] = []
 const globalRemovedSessionIds: string[] = []
 const deletedCleanupIdentities: Array<{ runtimeKey: string; directory: string; sessionId: string }> = []
 const movedSessionDirectories: Array<{ sessionID: string; directory: string }> = []
+const connectionEvents: string[] = []
+let configIsConnected = true
 
 const mockScopedClient = {
   permission: {
@@ -184,8 +186,13 @@ mock.module("@/lib/opencode/client", () => ({
 mock.module("@/stores/useConfigStore", () => ({
   useConfigStore: {
     getState: () => ({
-      isConnected: true,
+      isConnected: configIsConnected,
       hasEverConnected: true,
+      lastDisconnectReason: null,
+      probeConnection: async () => {
+        connectionEvents.push("connected")
+        return true
+      },
     }),
   },
 }))
@@ -915,6 +922,8 @@ describe("optimisticSend target directory", () => {
     replyCalls.length = 0
     scopedClientDirectories.length = 0
     sessionMessagesResult = { data: [] }
+    configIsConnected = true
+    connectionEvents.length = 0
   })
 
   test("passes the prompt directory to optimistic state during session switch races", async () => {
@@ -1002,6 +1011,28 @@ describe("optimisticSend target directory", () => {
     expect(callbackMessageID).toBe("msg_durable")
     expect(sentMessageID).toBe("msg_durable")
     expect(order).toEqual(["persisted", "sent"])
+  })
+
+  test("persists the message ID only after the connection is ready", async () => {
+    const targetStore = createStore({})
+    const childStores = createChildStores([["/target/project", targetStore]])
+    configIsConnected = false
+
+    const { optimisticSend, setActionRefs, setOptimisticRefs } = await import("./session-actions")
+    setActionRefs(mockSdk as unknown as OpencodeClient, childStores, () => "/target/project")
+    setOptimisticRefs(() => {}, () => {})
+
+    await optimisticSend({
+      sessionId: "session-reconnected",
+      directory: "/target/project",
+      content: "hello",
+      providerID: "provider",
+      modelID: "model",
+      onMessageID: () => { connectionEvents.push("persisted") },
+      send: async () => { connectionEvents.push("sent") },
+    })
+
+    expect(connectionEvents).toEqual(["connected", "persisted", "sent"])
   })
 
   test("commits the new branch locally and discards its optimistic shadow when sending after a revert", async () => {

@@ -323,25 +323,28 @@ describe('buildQueuedAutoSendPayload', () => {
     ]);
   });
 
-  test('reuses a durable message ID when the user explicitly retries an unknown send', async () => {
-    const payload = buildQueuedAutoSendPayload([{
-      id: 'queued-1',
-      content: 'queued message',
-      createdAt: 1,
-      sendAttempt: { messageID: 'msg_durable' },
-    }]);
-    expect(payload).not.toBeNull();
-    if (!payload) throw new Error('Expected a queued auto-send payload.');
-
-    await sendQueuedAutoSendPayload({
+  test('reuses a prepared message ID when a reload retries before dispatch', async () => {
+    const target = {
       runtimeKey: 'runtime-original',
       sessionId: 'session-original',
       directory: '/repo',
-    }, payload, {
+    };
+    await useMessageQueueStore.getState().addToQueue(target, {
+      content: 'queued message',
+      additionalParts: [{ text: 'queued instruction', synthetic: true }],
+    });
+    const [queued] = useMessageQueueStore.getState().getQueueForTarget(target);
+    await useMessageQueueStore.getState().recordSendAttempt(target, queued.id, 'msg_durable');
+    const payload = buildQueuedAutoSendPayload(useMessageQueueStore.getState().getQueueForTarget(target));
+    expect(payload).not.toBeNull();
+    if (!payload) throw new Error('Expected a queued auto-send payload.');
+
+    await sendQueuedAutoSendPayload(target, payload, {
       providerID: 'provider-1',
       modelID: 'model-1',
     });
 
+    expect(sendMessageCalls[0]?.[6]).toEqual([{ text: 'queued instruction', synthetic: true }]);
     expect(sendMessageCalls[0]?.[9]).toEqual({
       target: {
         runtimeKey: 'runtime-original',
@@ -362,6 +365,7 @@ describe('buildQueuedAutoSendPayload', () => {
     await useMessageQueueStore.getState().addToQueue(target, { content: 'queued message' });
     const [queued] = useMessageQueueStore.getState().getQueueForTarget(target);
     await useMessageQueueStore.getState().recordSendAttempt(target, queued.id, 'msg_durable');
+    await useMessageQueueStore.getState().markSendAttemptDispatched(target, queued.id, 'msg_durable');
     useMessageQueueStore.setState({ sendingIds: {} });
 
     expect(await reconcileQueuedAutoSendAttempt(target, queued.id, 'msg_durable')).toBe(true);
@@ -380,6 +384,7 @@ describe('buildQueuedAutoSendPayload', () => {
     await useMessageQueueStore.getState().addToQueue(target, { content: 'queued message' });
     const [queued] = useMessageQueueStore.getState().getQueueForTarget(target);
     await useMessageQueueStore.getState().recordSendAttempt(target, queued.id, 'msg_unknown');
+    await useMessageQueueStore.getState().markSendAttemptDispatched(target, queued.id, 'msg_unknown');
 
     expect(await reconcileQueuedAutoSendAttempt(target, queued.id, 'msg_unknown')).toBe(false);
     expect(useMessageQueueStore.getState().getQueueForTarget(target)[0]?.sendAttempt?.messageID).toBe('msg_unknown');

@@ -5,6 +5,7 @@ import {
   migrateMessageQueueState,
   parseMessageQueueKey,
   selectQueuedMessagesForSubmit,
+  shouldQueueComposerSubmission,
   useMessageQueueStore,
   withMessageQueueStateLock,
   withMessageQueueTargetLock,
@@ -42,7 +43,7 @@ describe("message queue runtime ownership", () => {
     expect(migrated.quarantinedLegacyMessages?.["session-1"]?.[0]?.content).toBe("legacy")
   })
 
-  test("preserves durable send identity while migrating the previous persisted format", () => {
+  test("preserves v5 send identity as dispatched while migrating the previous format", () => {
     const key = getMessageQueueKey(createMessageQueueTarget("session-1", "/repo", "runtime-a")!)
     const migrated = migrateMessageQueueState({
       queuedMessages: {
@@ -53,9 +54,10 @@ describe("message queue runtime ownership", () => {
           sendAttempt: { messageID: "msg_durable" },
         }],
       },
-    }, 2)
+    }, 5)
 
     expect(migrated.queuedMessages?.[key]?.[0]?.sendAttempt?.messageID).toBe("msg_durable")
+    expect(migrated.queuedMessages?.[key]?.[0]?.sendAttempt?.dispatched).toBe(true)
   })
 
   test("drops malformed durable send identity during hydration", () => {
@@ -66,7 +68,7 @@ describe("message queue runtime ownership", () => {
           id: "queued-1",
           content: "retry safely",
           createdAt: 1,
-          sendAttempt: { messageID: "" },
+          sendAttempt: { messageID: "", dispatched: true },
         }],
       },
     }, 3)
@@ -246,6 +248,7 @@ describe("in-flight queued sends", () => {
 
     expect(useMessageQueueStore.getState().getQueueForTarget(target)[0]?.sendAttempt).toEqual({
       messageID: "msg_durable",
+      dispatched: false,
     })
     expect(await useMessageQueueStore.getState().popToInput(target, queued.id)).toBeNull()
 
@@ -271,11 +274,25 @@ describe("in-flight queued sends", () => {
     expect(await useMessageQueueStore.getState().recordSendAttempt(target, queued.id, "msg_conflict")).toBe(false)
     expect(useMessageQueueStore.getState().getQueueForTarget(target)[0]?.sendAttempt?.messageID).toBe("msg_original")
   })
+
+  test("marks the durable identity only when dispatch is about to start", async () => {
+    const target = createMessageQueueTarget("session-1", "/repo", "runtime-a")!
+    await useMessageQueueStore.getState().addToQueue(target, { content: "send once" })
+    const [queued] = useMessageQueueStore.getState().getQueueForTarget(target)
+
+    await useMessageQueueStore.getState().recordSendAttempt(target, queued.id, "msg_original")
+    expect(await useMessageQueueStore.getState().markSendAttemptDispatched(target, queued.id, "msg_other")).toBe(false)
+    expect(await useMessageQueueStore.getState().markSendAttemptDispatched(target, queued.id, "msg_original")).toBe(true)
+    expect(useMessageQueueStore.getState().getQueueForTarget(target)[0]?.sendAttempt).toEqual({
+      messageID: "msg_original",
+      dispatched: true,
+    })
+  })
 })
 
 describe("composer queue selection", () => {
   const queue: QueuedMessage[] = [
-    { id: "queued-1", content: "first", createdAt: 1, sendAttempt: { messageID: "msg_unknown" } },
+    { id: "queued-1", content: "first", createdAt: 1, sendAttempt: { messageID: "msg_unknown", dispatched: true } },
     { id: "queued-2", content: "second", createdAt: 2 },
   ]
 
@@ -298,6 +315,14 @@ describe("composer queue selection", () => {
 
   test("does not merge queued content with composer content", () => {
     expect(selectQueuedMessagesForSubmit([{ id: "queued-1", content: "first", createdAt: 1 }], [], true)).toEqual([])
+  })
+
+  test("queues fresh composer content behind an existing dispatch except local commands", () => {
+    expect(shouldQueueComposerSubmission(queue, true, false, false, false)).toBe(true)
+    expect(shouldQueueComposerSubmission([], true, false, false, false)).toBe(false)
+    expect(shouldQueueComposerSubmission([], true, false, false, true)).toBe(true)
+    expect(shouldQueueComposerSubmission(queue, true, true, false, true)).toBe(false)
+    expect(shouldQueueComposerSubmission(queue, true, false, true, true)).toBe(false)
   })
 })
 

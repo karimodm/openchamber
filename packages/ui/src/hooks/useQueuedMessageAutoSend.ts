@@ -94,6 +94,7 @@ export const buildQueuedAutoSendPayload = (queue: QueuedMessage[]) => {
     agentMentionName: mention?.name,
     sendConfig: queued.sendConfig,
     sendAttempt: queued.sendAttempt,
+    additionalParts: queued.additionalParts,
   };
 };
 
@@ -133,7 +134,7 @@ export const sendQueuedAutoSendPayload = (
     resolved.agent,
     payload.primaryAttachments,
     payload.agentMentionName,
-    undefined,
+    payload.additionalParts,
     resolved.variant,
     'normal',
     options,
@@ -344,7 +345,7 @@ export function useQueuedMessageAutoSend(enabledOrOptions?: boolean | { enabled?
         retryScheduler.schedule(nextAttemptAt);
       };
 
-      if (payload.sendAttempt) {
+      if (payload.sendAttempt?.dispatched) {
         inFlightSessionsRef.current.add(targetKey);
         let markedSending = false;
         try {
@@ -417,7 +418,7 @@ export function useQueuedMessageAutoSend(enabledOrOptions?: boolean | { enabled?
           if (!recorded) throw new Error('Queued send was cancelled before dispatch.');
         }, async () => {
           if (!queuedMessageID) throw new Error('Queued send has no durable message ID.');
-          const active = await useMessageQueueStore.getState().recordSendAttempt(
+          const active = await useMessageQueueStore.getState().markSendAttemptDispatched(
             target,
             payload.queuedMessageId,
             queuedMessageID,

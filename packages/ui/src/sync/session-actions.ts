@@ -1456,7 +1456,6 @@ export async function optimisticSend(input: {
   messageID?: string
   onOptimisticInsert?: () => void
   onMessageID?: (messageID: string) => void | Promise<void>
-  beforeSend?: () => void | Promise<void>
   onSendFailure?: (ambiguous: boolean) => void
   beforeOptimisticInsert?: () => void
   /** The actual API call — receives the optimistic messageID so the server can use the same ID */
@@ -1477,8 +1476,8 @@ export async function optimisticSend(input: {
 
   assertRuntimeUnchanged()
   const messageID = input.messageID ?? ascendingId("msg")
-  await input.onMessageID?.(messageID)
   await waitForConnectionOrThrow()
+  await input.onMessageID?.(messageID)
   input.beforeOptimisticInsert?.()
   assertRuntimeUnchanged()
 
@@ -1561,8 +1560,6 @@ export async function optimisticSend(input: {
   })
 
   try {
-    assertRuntimeUnchanged()
-    await input.beforeSend?.()
     assertRuntimeUnchanged()
     await input.send(messageID)
   } catch (error) {

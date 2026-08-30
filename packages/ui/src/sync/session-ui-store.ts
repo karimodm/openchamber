@@ -188,7 +188,6 @@ export function routeMessage(params: {
         files: params.files,
         messageID: params.messageID,
         onMessageID: params.onMessageID,
-        beforeSend: params.beforeSend,
         onSendFailure: params.onSendFailure,
         send: (messageID) => opencodeClient.sendCommand({
           runtimeKey: params.runtimeKey,
@@ -220,7 +219,6 @@ export function routeMessage(params: {
     files: params.files,
     messageID: params.messageID,
     onMessageID: params.onMessageID,
-    beforeSend: params.beforeSend,
     onSendFailure: params.onSendFailure,
     send: (messageID) => opencodeClient.sendMessage({
       runtimeKey: params.runtimeKey,
