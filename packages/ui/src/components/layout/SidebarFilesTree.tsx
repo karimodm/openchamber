@@ -659,7 +659,6 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
   const addOpenPath = useFilesViewTabsStore((state) => state.addOpenPath);
   const removeOpenPathsByPrefix = useFilesViewTabsStore((state) => state.removeOpenPathsByPrefix);
   const toggleExpandedPath = useFilesViewTabsStore((state) => state.toggleExpandedPath);
-  const expandPaths = useFilesViewTabsStore((state) => state.expandPaths);
   const collapseAllExpandedPaths = useFilesViewTabsStore((state) => state.collapseAllExpandedPaths);
   // The file the editor beside the tree is currently showing. A primitive so
   // the selector never needs a shallow compare; non-file tabs (diff, plan,
@@ -1042,16 +1041,10 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
     }
   }, [loadDirectory, root, toggleExpandedPath]);
 
-  const isDirectoryLoaded = React.useCallback(
-    (path: string) => loadedDirsRef.current.has(path),
-    [],
-  );
-
-  // Follow the editor: whenever the active file tab changes, select that file
-  // in the tree, expand (and list) the directories leading to it, and scroll
-  // its row into view (#3814). Without this the highlight stays wherever the
-  // user last clicked, and a file opened from chat, search, a diff or another
-  // tab has no visible position in the tree at all.
+  // Follow the editor: scroll to the file the active tab is showing (#3814).
+  // Its row is already selected and its directories already expanded, but the
+  // row is never scrolled to, so in a large repository the open file cannot be
+  // found in the tree.
   useFileTreeReveal({
     root: normalizedRoot,
     activeFilePath: normalizedActiveFilePath,
@@ -1061,10 +1054,6 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
     childrenByDir,
     expandedPaths,
     searchResultCount: searchResults.length,
-    isDirectoryLoaded,
-    loadDirectory,
-    selectPath: setSelectedPath,
-    expandPaths,
   });
 
   const uploadDroppedFiles = React.useCallback(async (

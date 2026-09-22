@@ -4,67 +4,47 @@ import { Window } from 'happy-dom';
 import {
   fileTreeRowSelector,
   isPendingRevealCurrent,
-  planFileTreeReveal,
+  resolveFileTreeRevealTarget,
   revealFileTreeRow,
 } from './fileTreeReveal';
 
 const domWindow = new Window();
 Object.assign(globalThis, { document: domWindow.document });
 
-describe('planFileTreeReveal (#3814)', () => {
-  test('expands every directory between the root and the file, outermost first', () => {
-    // Order matters: the caller lists these in sequence and a directory
-    // cannot be listed before its parent is known.
-    expect(planFileTreeReveal('/repo', '/repo/packages/ui/src/main.tsx')).toEqual({
-      selectedPath: '/repo/packages/ui/src/main.tsx',
-      directoriesToExpand: ['/repo/packages', '/repo/packages/ui', '/repo/packages/ui/src'],
-    });
+describe('resolveFileTreeRevealTarget (#3814)', () => {
+  test('a file inside the root is revealable', () => {
+    expect(resolveFileTreeRevealTarget('/repo', '/repo/packages/ui/src/main.tsx'))
+      .toBe('/repo/packages/ui/src/main.tsx');
   });
 
-  test('a file directly under the root needs no expansion', () => {
-    expect(planFileTreeReveal('/repo', '/repo/README.md')).toEqual({
-      selectedPath: '/repo/README.md',
-      directoriesToExpand: [],
-    });
-  });
-
-  test('a filesystem root does not produce a doubled separator', () => {
-    expect(planFileTreeReveal('/', '/srv/app/index.ts')).toEqual({
-      selectedPath: '/srv/app/index.ts',
-      directoriesToExpand: ['/srv', '/srv/app'],
-    });
-  });
-
-  test('a Windows drive root is handled like any other root', () => {
-    expect(planFileTreeReveal('C:/Repo', 'C:/Repo/src/a.ts')).toEqual({
-      selectedPath: 'C:/Repo/src/a.ts',
-      directoriesToExpand: ['C:/Repo/src'],
-    });
+  test('a filesystem root and a Windows drive root are handled', () => {
+    expect(resolveFileTreeRevealTarget('/', '/srv/app/index.ts')).toBe('/srv/app/index.ts');
+    expect(resolveFileTreeRevealTarget('C:/Repo', 'C:/Repo/src/a.ts')).toBe('C:/Repo/src/a.ts');
   });
 
   test('a file outside the root reveals nothing', () => {
     // The context panel can hold a tab for a file outside the workspace; the
-    // tree has no row for it, so the current selection must stay put.
-    expect(planFileTreeReveal('/repo', '/elsewhere/a.ts')).toBeNull();
+    // tree has no row for it, so the tree must stay where it is.
+    expect(resolveFileTreeRevealTarget('/repo', '/elsewhere/a.ts')).toBeNull();
   });
 
   test('a sibling root sharing a name prefix is not treated as inside the root', () => {
-    expect(planFileTreeReveal('/repo', '/repo-two/a.ts')).toBeNull();
+    expect(resolveFileTreeRevealTarget('/repo', '/repo-two/a.ts')).toBeNull();
   });
 
   test('the root itself is not a revealable file', () => {
-    expect(planFileTreeReveal('/repo', '/repo')).toBeNull();
-    expect(planFileTreeReveal('/repo', '/repo/')).toBeNull();
+    expect(resolveFileTreeRevealTarget('/repo', '/repo')).toBeNull();
+    expect(resolveFileTreeRevealTarget('/repo', '/repo/')).toBeNull();
   });
 
-  test('un-normalized paths are rejected rather than producing phantom ancestors', () => {
-    expect(planFileTreeReveal('/repo', '/repo/src//a.ts')).toBeNull();
-    expect(planFileTreeReveal('/repo', '/repo/src/../a.ts')).toBeNull();
+  test('un-normalized paths are rejected rather than matching no row silently', () => {
+    expect(resolveFileTreeRevealTarget('/repo', '/repo/src//a.ts')).toBeNull();
+    expect(resolveFileTreeRevealTarget('/repo', '/repo/src/../a.ts')).toBeNull();
   });
 
   test('a missing root or file reveals nothing', () => {
-    expect(planFileTreeReveal('', '/repo/a.ts')).toBeNull();
-    expect(planFileTreeReveal('/repo', null)).toBeNull();
+    expect(resolveFileTreeRevealTarget('', '/repo/a.ts')).toBeNull();
+    expect(resolveFileTreeRevealTarget('/repo', null)).toBeNull();
   });
 });
 

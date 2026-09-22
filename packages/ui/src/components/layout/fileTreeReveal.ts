@@ -1,17 +1,17 @@
 /**
- * "Reveal the file the editor is showing" support for the context-panel file
- * tree (issue #3814).
+ * "Scroll to the file the editor is showing" support for the context-panel
+ * file tree (issue #3814).
  *
- * The tree's selection lives in `useFilesViewTabsStore` and used to be written
- * only by a click on a tree row, so the highlight drifted away from the file
- * the editor beside it was actually showing: switching tabs, or opening a file
- * from chat / search / a diff, left the tree pointing somewhere else with the
- * target's ancestors collapsed. In a large repository that makes the open file
- * unfindable in the tree.
+ * Opening a file already moves the tree's `selectedPath` (ContextPanel mirrors
+ * the active file tab into it) and already expands the directories above the
+ * row (the file editor's own `ensurePathVisible` writes the same store). What
+ * never happened is the last step: scrolling that row into view. In a large
+ * repository the highlighted row is simply somewhere outside the viewport, so
+ * switching tabs tells the user nothing about where the file lives.
  *
- * The path math lives here rather than in the component so it can be tested
- * without mounting the tree, and so the DOM lookup has a single definition of
- * the row attribute.
+ * The path check and the DOM lookup live here rather than in the component so
+ * they can be tested without mounting the tree, and so the row attribute has a
+ * single definition.
  */
 
 /**
@@ -20,35 +20,20 @@
  */
 export const FILE_TREE_ROW_PATH_ATTRIBUTE = 'data-tree-path';
 
-export type FileTreeRevealPlan = {
-  /** The row the tree should mark as selected. */
-  selectedPath: string;
-  /**
-   * Directories between the root (exclusive) and the file (exclusive),
-   * outermost first. The root itself is never included: its children are
-   * always rendered, and it has no row to expand. The order matters because
-   * the caller lists them in sequence — a directory cannot be listed before
-   * its parent is known.
-   */
-  directoriesToExpand: string[];
-};
-
 /**
- * Work out what has to be expanded for `filePath` to have a visible row.
+ * The row to scroll to for `filePath`, or null when there is nothing to
+ * reveal: no root, no file, a file outside the root, the root itself, or a
+ * path that still carries `.`/`..` segments (which matches no row).
  *
  * Both arguments must already be normalized the way the tree normalizes paths
  * (forward slashes, no repeated or trailing separator); this function does no
- * normalizing of its own so the caller and the rendered rows cannot disagree
- * on the string identity of a path.
- *
- * Returns `null` when there is nothing to reveal: no root, no file, a file
- * that is not inside the root, the root itself, or a path that still carries
- * `.`/`..` segments (which would produce ancestors that match no row).
+ * normalizing of its own so it cannot disagree with the rendered rows on the
+ * string identity of a path.
  */
-export const planFileTreeReveal = (
+export const resolveFileTreeRevealTarget = (
   root: string | null | undefined,
   filePath: string | null | undefined,
-): FileTreeRevealPlan | null => {
+): string | null => {
   if (!root || !filePath) return null;
 
   const rootPrefix = root.endsWith('/') ? root : `${root}/`;
@@ -62,17 +47,7 @@ export const planFileTreeReveal = (
     return null;
   }
 
-  // `rootPrefix` without its separator, so a root of '/' yields '/src' rather
-  // than '//src'.
-  const base = rootPrefix.slice(0, -1);
-  const directoriesToExpand: string[] = [];
-  let current = base;
-  for (const segment of segments.slice(0, -1)) {
-    current = `${current}/${segment}`;
-    directoriesToExpand.push(current);
-  }
-
-  return { selectedPath: filePath, directoriesToExpand };
+  return filePath;
 };
 
 /**
@@ -104,8 +79,8 @@ export const fileTreeRowSelector = (path: string): string => (
  * `block: 'nearest'` is deliberate: a row that is already on screen must not
  * move, otherwise merely switching tabs would yank the tree around.
  *
- * Returns false when the row is not in the DOM yet — the caller retries after
- * the directories it asked for have been listed.
+ * Returns false when the row is not in the DOM yet — the caller retries on the
+ * renders that could produce it.
  */
 export const revealFileTreeRow = (
   container: ParentNode | null | undefined,
