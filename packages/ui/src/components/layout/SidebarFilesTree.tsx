@@ -445,7 +445,7 @@ const FileRow: React.FC<FileRowProps> = ({
       <button
         type="button"
         // Read by fileTreeReveal to scroll this row into view when the editor
-        // switches to it; keep in sync with FILE_TREE_ROW_PATH_ATTRIBUTE.
+        // switches to it; keep in sync with the attribute its selector builds.
         data-tree-path={node.path}
         onClick={handleInteraction}
         onContextMenu={handleContextMenu}

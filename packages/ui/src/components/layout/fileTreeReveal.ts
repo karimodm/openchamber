@@ -18,7 +18,7 @@
  * Attribute every file tree row renders (`SidebarFilesTree`), so a reveal can
  * find the row for a path without threading a ref through the memoized rows.
  */
-export const FILE_TREE_ROW_PATH_ATTRIBUTE = 'data-tree-path';
+const FILE_TREE_ROW_PATH_ATTRIBUTE = 'data-tree-path';
 
 /**
  * The row to scroll to for `filePath`, or null when there is nothing to
