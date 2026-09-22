@@ -50,7 +50,7 @@ import { notifyFileContentInvalidated } from '@/lib/fileContentInvalidation';
 import { isBrowserClientRuntime } from '@/lib/desktop';
 import { useI18n } from '@/lib/i18n';
 import { recordFileTreeDragStart, shouldTreatFileTreeDragEndAsClick } from './fileTreeDragClick';
-import { planFileTreeReveal, revealFileTreeRow } from './fileTreeReveal';
+import { useFileTreeReveal } from './useFileTreeReveal';
 
 type FileNode = {
   name: string;
@@ -575,13 +575,6 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
   const rootRef = React.useRef(root);
   rootRef.current = root;
   const treeListRef = React.useRef<HTMLUListElement | null>(null);
-  // Last file revealed because the editor switched to it. Reveals are keyed on
-  // the active tab, not on the selection, so a row the user clicks afterwards
-  // stays selected until the editor moves to another file.
-  const revealedFilePathRef = React.useRef<string | null>(null);
-  // Set while a reveal is waiting for its ancestors to finish listing; the row
-  // cannot be scrolled to before it is rendered.
-  const pendingRevealPathRef = React.useRef<string | null>(null);
 
   const [childrenByDir, setChildrenByDir] = React.useState<Record<string, FileNode[]>>({});
   const [loadErrorsByDir, setLoadErrorsByDir] = React.useState<Record<string, string>>({});
@@ -598,9 +591,6 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
   React.useEffect(() => {
     setDropTarget(null);
     setUploadConflicts(null);
-    // A reveal is only meaningful for the root it was computed against.
-    revealedFilePathRef.current = null;
-    pendingRevealPathRef.current = null;
     if (!root) {
       setChildrenByDir({});
       setLoadErrorsByDir({});
@@ -683,6 +673,11 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
     if (!activeTab || activeTab.mode !== 'file') return null;
     return activeTab.targetPath || null;
   });
+  const normalizedActiveFilePath = React.useMemo(
+    () => (activeContextFilePath ? normalizePath(activeContextFilePath) : null),
+    [activeContextFilePath],
+  );
+  const normalizedRoot = React.useMemo(() => (root ? normalizePath(root) : null), [root]);
   const contextTabs = useUIStore((state) => (root ? (state.contextPanelByDirectory[root]?.tabs ?? EMPTY_CONTEXT_TABS) : EMPTY_CONTEXT_TABS));
   const openContextFilePaths = React.useMemo(() => new Set(
     contextTabs
@@ -1047,57 +1042,30 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
     }
   }, [loadDirectory, root, toggleExpandedPath]);
 
+  const isDirectoryLoaded = React.useCallback(
+    (path: string) => loadedDirsRef.current.has(path),
+    [],
+  );
+
   // Follow the editor: whenever the active file tab changes, select that file
-  // in the tree and expand (and list) the directories leading to it (#3814).
-  // Without this the highlight stays wherever the user last clicked, and a
-  // file opened from chat, search, a diff or another tab has no visible
-  // position in the tree at all.
-  React.useEffect(() => {
-    // A hidden tree lists nothing (loadDirectory bails while invisible), so
-    // leave the reveal for the moment the column is shown again.
-    if (!visible || !root || !activeContextFilePath) return;
-    // Search replaces the tree with a flat result list, so there is no row to
-    // expand towards; revealing would also fight the query being typed.
-    if (searchQuery.trim().length > 0) return;
-
-    const plan = planFileTreeReveal(normalizePath(root), normalizePath(activeContextFilePath));
-    if (!plan) return;
-    if (revealedFilePathRef.current === plan.selectedPath) return;
-    revealedFilePathRef.current = plan.selectedPath;
-
-    setSelectedPath(root, plan.selectedPath);
-    if (plan.directoriesToExpand.length > 0) {
-      expandPaths(root, plan.directoriesToExpand);
-    }
-    pendingRevealPathRef.current = plan.selectedPath;
-
-    let cancelled = false;
-    void (async () => {
-      // Outermost first: a directory can only be listed once its parent is.
-      for (const directory of plan.directoriesToExpand) {
-        if (cancelled) return;
-        if (loadedDirsRef.current.has(directory)) continue;
-        await loadDirectory(directory);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeContextFilePath, expandPaths, loadDirectory, root, searchQuery, setSelectedPath, visible]);
-
-  // Scroll the revealed row into view once it exists. This runs after every
-  // render that could have produced it (a directory finished listing, or an
-  // expansion changed). A target that never renders — e.g. the file is hidden
-  // by the "show hidden"/gitignore filters — simply stays pending until the
-  // next reveal or root change replaces it.
-  React.useEffect(() => {
-    const target = pendingRevealPathRef.current;
-    if (!target) return;
-    if (revealFileTreeRow(treeListRef.current, target)) {
-      pendingRevealPathRef.current = null;
-    }
-  }, [childrenByDir, expandedPaths, searchQuery]);
+  // in the tree, expand (and list) the directories leading to it, and scroll
+  // its row into view (#3814). Without this the highlight stays wherever the
+  // user last clicked, and a file opened from chat, search, a diff or another
+  // tab has no visible position in the tree at all.
+  useFileTreeReveal({
+    root: normalizedRoot,
+    activeFilePath: normalizedActiveFilePath,
+    enabled: visible,
+    searchActive: searchQuery.trim().length > 0,
+    listRef: treeListRef,
+    childrenByDir,
+    expandedPaths,
+    searchResultCount: searchResults.length,
+    isDirectoryLoaded,
+    loadDirectory,
+    selectPath: setSelectedPath,
+    expandPaths,
+  });
 
   const uploadDroppedFiles = React.useCallback(async (
     directory: string,

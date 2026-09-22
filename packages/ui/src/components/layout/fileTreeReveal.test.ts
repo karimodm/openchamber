@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { fileTreeRowSelector, planFileTreeReveal, revealFileTreeRow } from './fileTreeReveal';
+import {
+  fileTreeRowSelector,
+  isPendingRevealCurrent,
+  planFileTreeReveal,
+  revealFileTreeRow,
+} from './fileTreeReveal';
 
 const domWindow = new Window();
 Object.assign(globalThis, { document: domWindow.document });
@@ -67,6 +72,27 @@ describe('fileTreeRowSelector', () => {
   test('escapes quotes and backslashes so odd file names stay valid selectors', () => {
     expect(fileTreeRowSelector('/repo/a"b.ts')).toBe('[data-tree-path="/repo/a\\"b.ts"]');
     expect(fileTreeRowSelector('/repo/a\\b.ts')).toBe('[data-tree-path="/repo/a\\\\b.ts"]');
+  });
+});
+
+describe('isPendingRevealCurrent', () => {
+  test('a reveal waiting for its row is current while the editor still shows that file', () => {
+    expect(isPendingRevealCurrent('/repo/src/a.ts', '/repo/src/a.ts')).toBe(true);
+  });
+
+  test('a reveal is dropped once the editor moved to another file', () => {
+    // The row can appear much later (a slow listing, or the user unhiding
+    // files); scrolling then would move the tree to a file nobody is reading.
+    expect(isPendingRevealCurrent('/repo/src/a.ts', '/repo/src/b.ts')).toBe(false);
+  });
+
+  test('a reveal is dropped when the active tab is no longer a file in this root', () => {
+    expect(isPendingRevealCurrent('/repo/src/a.ts', null)).toBe(false);
+  });
+
+  test('nothing pending is never current', () => {
+    expect(isPendingRevealCurrent(null, null)).toBe(false);
+    expect(isPendingRevealCurrent(null, '/repo/src/a.ts')).toBe(false);
   });
 });
 

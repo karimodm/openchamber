@@ -75,6 +75,20 @@ export const planFileTreeReveal = (
   return { selectedPath: filePath, directoriesToExpand };
 };
 
+/**
+ * True while a reveal that has not been scrolled to yet is still the file the
+ * editor is showing.
+ *
+ * A reveal can outlive its reason: the row may only appear much later (a slow
+ * listing, or the user unhiding files), by which point the editor may be on
+ * another tab. Scrolling then would move the tree to a file nobody is looking
+ * at. Both paths must already be normalized.
+ */
+export const isPendingRevealCurrent = (
+  pendingPath: string | null,
+  activeFilePath: string | null,
+): boolean => Boolean(pendingPath) && pendingPath === activeFilePath;
+
 const escapeAttributeValue = (value: string): string => (
   value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 );
